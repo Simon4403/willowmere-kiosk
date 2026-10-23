@@ -1,0 +1,91 @@
+name: Build kiosk APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KIOSK_START_URL: ${{ vars.KIOSK_START_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Check signing secrets
+        env:
+          KS: ${{ secrets.KIOSK_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KIOSK_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KIOSK_KEY_ALIAS }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$KS_PASS" ] || [ -z "$KS_ALIAS" ]; then
+            echo "::error::Signing secrets are missing. Follow README step 2 (create the signing key)."
+            exit 1
+          fi
+
+      - name: Decode signing key
+        env:
+          KS: ${{ secrets.KIOSK_KEYSTORE_B64 }}
+        run: echo "$KS" | base64 -d > "$RUNNER_TEMP/kiosk-release.jks"
+
+      - name: Work out the public APK link
+        id: urls
+        env:
+          OVERRIDE: ${{ vars.KIOSK_APK_URL }}
+        run: |
+          if [ -n "$OVERRIDE" ]; then
+            APK_URL="$OVERRIDE"
+          else
+            APK_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/willowmere-kiosk.apk"
+          fi
+          echo "apk_url=$APK_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed release APK
+        env:
+          KIOSK_KEYSTORE_PATH: ${{ runner.temp }}/kiosk-release.jks
+          KIOSK_KEYSTORE_PASSWORD: ${{ secrets.KIOSK_KEYSTORE_PASSWORD }}
+          KIOSK_KEY_ALIAS: ${{ secrets.KIOSK_KEY_ALIAS }}
+          KIOSK_KEY_PASSWORD: ${{ secrets.KIOSK_KEYSTORE_PASSWORD }}
+          KIOSK_UPDATE_URL: ${{ steps.urls.outputs.apk_url }}
+        run: gradle --no-daemon assembleRelease
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/willowmere-kiosk.apk
+
+      - name: Make provisioning QR code
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qrencode
+          bash scripts/make-provisioning.sh dist/willowmere-kiosk.apk \
+            "${{ steps.urls.outputs.apk_url }}" "$KIOSK_START_URL" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: willowmere-kiosk
+          path: dist/
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Willowmere Kiosk 1.0.${{ github.run_number }}
+          make_latest: 'true'
+          files: |
+            dist/willowmere-kiosk.apk
+            dist/provisioning-qr.png
+            dist/provisioning.json

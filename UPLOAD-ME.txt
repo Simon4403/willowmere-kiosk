@@ -1,0 +1,64 @@
+WILLOWMERE KIOSK - UPLOAD MAP
+=============================
+New repo: willowmere-kiosk (PUBLIC - see README step 1). Everything goes in the repo root, keeping the folders as they are.
+
+ZIP PATH                                                        ->  REPO PATH
+willowmere-kiosk/README.md                                      ->  README.md
+willowmere-kiosk/UPLOAD-ME.txt                                  ->  UPLOAD-ME.txt
+willowmere-kiosk/.gitignore                                     ->  .gitignore
+willowmere-kiosk/settings.gradle                                ->  settings.gradle
+willowmere-kiosk/build.gradle                                   ->  build.gradle
+willowmere-kiosk/gradle.properties                              ->  gradle.properties
+willowmere-kiosk/.github/workflows/build.yml                    ->  .github/workflows/build.yml
+willowmere-kiosk/scripts/make-provisioning.sh                   ->  scripts/make-provisioning.sh
+willowmere-kiosk/app/build.gradle                               ->  app/build.gradle
+willowmere-kiosk/app/src/main/AndroidManifest.xml               ->  app/src/main/AndroidManifest.xml
+willowmere-kiosk/app/src/main/res/values/strings.xml            ->  app/src/main/res/values/strings.xml
+willowmere-kiosk/app/src/main/res/xml/device_admin.xml          ->  app/src/main/res/xml/device_admin.xml
+willowmere-kiosk/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml        -> same path
+willowmere-kiosk/app/src/main/res/drawable/ic_launcher_background.xml      -> same path
+willowmere-kiosk/app/src/main/res/drawable/ic_launcher_foreground.xml      -> same path
+willowmere-kiosk/app/src/main/java/com/heracaresolutions/kiosk/*.java     -> same path (12 files)
+
+Note: GitHub's phone upload can hide dot-folders. If .github/ or .gitignore
+don't appear, use the Codespaces route below.
+
+
+CODESPACES ROUTE (recommended)
+------------------------------
+1) Create the empty public repo "willowmere-kiosk" on GitHub, open a Codespace on it,
+   and drag willowmere-kiosk.zip into the Codespace file explorer (repo root).
+
+2) Unpack into the repo:
+
+unzip -o willowmere-kiosk.zip -d /tmp/wk && cp -r /tmp/wk/willowmere-kiosk/. . && rm -rf /tmp/wk willowmere-kiosk.zip && ls -la
+
+3) Signing key + settings (ONCE ONLY - skip on later updates; your key and secrets stay put):
+
+unset GITHUB_TOKEN && gh auth login
+
+PW=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9') && keytool -genkeypair -keystore kiosk-release.jks -storetype PKCS12 -alias kiosk -keyalg RSA -keysize 4096 -validity 10000 -storepass "$PW" -keypass "$PW" -dname "CN=Hera Care Solutions Ltd, O=Hera Care Solutions Ltd, C=GB" && base64 -w0 kiosk-release.jks | gh secret set KIOSK_KEYSTORE_B64 && gh secret set KIOSK_KEYSTORE_PASSWORD --body "$PW" && gh secret set KIOSK_KEY_ALIAS --body "kiosk" && echo "$PW" > signing.txt && echo "Key created - DOWNLOAD kiosk-release.jks and signing.txt now"
+
+gh variable set KIOSK_START_URL --body "https://YOUR-WILLOWMERE-ADDRESS"
+
+   (If keytool is missing: sudo apt-get update && sudo apt-get install -y openjdk-17-jdk-headless)
+   Right-click kiosk-release.jks and signing.txt -> Download, keep them safe, then:
+
+rm kiosk-release.jks signing.txt
+
+4) Checks (the Android build itself runs in GitHub Actions - that's the real test):
+
+bash -n scripts/make-provisioning.sh && git status --short && git check-ignore -q kiosk-release.jks && echo "keys are git-ignored: OK"
+
+5) Commit and push (starts the build):
+
+git add -A && git commit -m "Willowmere kiosk app v1" && git push
+
+6) Watch the build, then open the release:
+
+gh run watch && gh release view --web
+
+
+LATER UPDATES (replacing files from a new zip, keeping your key/secrets/variables)
+----------------------------------------------------------------------------------
+unzip -o willowmere-kiosk.zip -d /tmp/wk && rsync -a --exclude='*.jks' --exclude='signing.txt' /tmp/wk/willowmere-kiosk/ ./ && rm -rf /tmp/wk willowmere-kiosk.zip && git add -A && git commit -m "Kiosk update" && git push && gh run watch

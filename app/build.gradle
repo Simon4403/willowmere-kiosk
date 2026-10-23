@@ -1,0 +1,65 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Values injected by GitHub Actions (see .github/workflows/build.yml).
+// Empty values fall back to the defaults on the right.
+def envOr = { String name, String fallback ->
+    def v = System.getenv(name)
+    return (v == null || v.trim().isEmpty()) ? fallback : v.trim()
+}
+
+def kioskStartUrl  = envOr('KIOSK_START_URL', 'https://example.com/')
+def kioskUpdateUrl = envOr('KIOSK_UPDATE_URL', '')
+def buildNumber    = envOr('GITHUB_RUN_NUMBER', '1').toInteger()
+def keystorePath   = envOr('KIOSK_KEYSTORE_PATH', '')
+
+android {
+    namespace 'com.heracaresolutions.kiosk'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.heracaresolutions.kiosk'
+        minSdk 26
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1.0.${buildNumber}"
+
+        buildConfigField 'String', 'DEFAULT_START_URL', "\"${kioskStartUrl}\""
+        buildConfigField 'String', 'DEFAULT_UPDATE_URL', "\"${kioskUpdateUrl}\""
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('KIOSK_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KIOSK_KEY_ALIAS')
+                keyPassword System.getenv('KIOSK_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystorePath) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

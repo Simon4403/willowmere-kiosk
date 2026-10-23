@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder leaf mark. Swap for the Hera "peace feather" artwork when convenient. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#F4F1EA"
+        android:pathData="M56,30 C70,38 73,57 62,71 C57,77 51,79 46,79 C40,64 43,44 56,30 Z" />
+    <path
+        android:strokeColor="#2E5E4E"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M48,77 C51,62 54,48 58,37" />
+</vector>

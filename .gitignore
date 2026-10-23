@@ -1,0 +1,14 @@
+# Build output
+.gradle/
+build/
+app/build/
+dist/
+local.properties
+*.iml
+.idea/
+
+# Signing keys - NEVER commit these
+*.jks
+*.keystore
+*.p12
+signing.txt
