@@ -25,7 +25,9 @@ if [ -n "$APKSIGNER" ]; then
   echo "Reading certificate with $APKSIGNER"
   CERT_OUT="$("$APKSIGNER" verify --print-certs "$APK" 2>&1 || true)"
   echo "$CERT_OUT"
-  HEX="$(printf '%s\n' "$CERT_OUT" | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')"
+  # Formats vary by version ("Signer #1 certificate SHA-256 digest: …" or "V2 Signer: certificate SHA-256 digest: …"),
+  # so take the 64-hex-digit value after the label rather than a fixed field.
+  HEX="$(printf '%s\n' "$CERT_OUT" | sed -n 's/.*certificate SHA-256 digest: *\([0-9A-Fa-f]\{64\}\).*/\1/p' | sed -n '1p')"
 fi
 
 # Fallback: the signing keystore itself (same certificate as the APK).
