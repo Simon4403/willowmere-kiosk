@@ -68,9 +68,13 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk dist/willowmere-kiosk.apk
 
       - name: Make provisioning QR code
+        env:
+          KIOSK_KEYSTORE_PATH: ${{ runner.temp }}/kiosk-release.jks
+          KIOSK_KEYSTORE_PASSWORD: ${{ secrets.KIOSK_KEYSTORE_PASSWORD }}
+          KIOSK_KEY_ALIAS: ${{ secrets.KIOSK_KEY_ALIAS }}
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qrencode
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq qrencode || pip install --quiet --user --break-system-packages "qrcode[pil]"
           bash scripts/make-provisioning.sh dist/willowmere-kiosk.apk \
             "${{ steps.urls.outputs.apk_url }}" "$KIOSK_START_URL" dist
 

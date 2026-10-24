@@ -11,18 +11,34 @@ OUT="${4:-dist}"
 mkdir -p "$OUT"
 
 # SHA-256 of the APK's signing certificate (Android checks the download against this).
+# Output is captured whole before parsing, so an early-exiting grep can't SIGPIPE the producer under pipefail.
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-APKSIGNER="$(ls -d "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+APKSIGNER=""
+for candidate in "$SDK"/build-tools/*/apksigner; do
+  [ -x "$candidate" ] && APKSIGNER="$candidate"   # glob sorts ascending, so the newest wins
+done
+
+HEX=""
 if [ -n "$APKSIGNER" ]; then
-  HEX="$("$APKSIGNER" verify --print-certs "$APK" | grep -m1 'certificate SHA-256 digest' | awk -F': ' '{print $2}')"
-else
-  HEX="$(keytool -printcert -jarfile "$APK" | grep -m1 'SHA256:' | sed 's/.*SHA256: *//')"
+  echo "Reading certificate with $APKSIGNER"
+  CERT_OUT="$("$APKSIGNER" verify --print-certs "$APK" 2>&1 || true)"
+  echo "$CERT_OUT"
+  HEX="$(printf '%s\n' "$CERT_OUT" | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')"
 fi
-HEX="$(echo "$HEX" | tr -d ':[:space:]')"
-if [ -z "$HEX" ]; then
-  echo "Could not read the APK signing certificate" >&2
+
+# Fallback: the signing keystore itself (same certificate as the APK).
+if [ -z "$HEX" ] && [ -n "${KIOSK_KEYSTORE_PATH:-}" ] && [ -f "${KIOSK_KEYSTORE_PATH}" ]; then
+  echo "Reading certificate from the keystore instead"
+  KS_OUT="$(keytool -list -v -keystore "$KIOSK_KEYSTORE_PATH" -storepass "${KIOSK_KEYSTORE_PASSWORD:-}" -alias "${KIOSK_KEY_ALIAS:-kiosk}" 2>&1 || true)"
+  HEX="$(printf '%s\n' "$KS_OUT" | awk '/SHA256:/ {sub(/.*SHA256: */, ""); print; exit}')"
+fi
+
+HEX="$(printf '%s' "$HEX" | tr -d ':[:space:]')"
+if ! printf '%s' "$HEX" | grep -Eq '^[0-9A-Fa-f]{64}$'; then
+  echo "Could not read the APK signing certificate (got: '$HEX')" >&2
   exit 1
 fi
+echo "Signing certificate SHA-256: $HEX"
 
 python3 - "$APK_URL" "$HEX" "$START_URL" "$OUT/provisioning.json" <<'PY'
 import base64, json, sys
@@ -46,7 +62,11 @@ PY
 
 if command -v qrencode >/dev/null 2>&1; then
   qrencode -o "$OUT/provisioning-qr.png" -s 10 -m 4 -l M < "$OUT/provisioning.json"
-  echo "QR code written to $OUT/provisioning-qr.png"
+elif python3 -c "import qrcode" 2>/dev/null; then
+  python3 -c "import qrcode,sys; qrcode.make(open(sys.argv[1]).read(), box_size=10, border=4).save(sys.argv[2])" \
+    "$OUT/provisioning.json" "$OUT/provisioning-qr.png"
 else
-  echo "qrencode not installed - skipped the PNG (the JSON is still valid)" >&2
+  echo "No QR generator available (install qrencode or python qrcode)" >&2
+  exit 1
 fi
+echo "QR code written to $OUT/provisioning-qr.png"
