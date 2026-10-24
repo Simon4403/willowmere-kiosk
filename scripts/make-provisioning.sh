@@ -3,6 +3,8 @@
 #   usage: make-provisioning.sh <signed.apk> <public APK download URL> [start URL] [output dir]
 # Writes <out>/provisioning.json and <out>/provisioning-qr.png (needs qrencode).
 set -euo pipefail
+# Surface any failure as a GitHub annotation (visible without opening the log).
+trap 'echo "::error file=scripts/make-provisioning.sh,line=$LINENO::Failed: $BASH_COMMAND"' ERR
 
 APK="$1"
 APK_URL="$2"
@@ -35,10 +37,10 @@ fi
 
 HEX="$(printf '%s' "$HEX" | tr -d ':[:space:]')"
 if ! printf '%s' "$HEX" | grep -Eq '^[0-9A-Fa-f]{64}$'; then
-  echo "Could not read the APK signing certificate (got: '$HEX')" >&2
+  echo "::error::Could not read the APK signing certificate. apksigner=[$APKSIGNER] got=[$HEX] out=[$(printf '%s' "${CERT_OUT:-}${KS_OUT:-}" | head -c 300 | tr '\n' ' ')]"
   exit 1
 fi
-echo "Signing certificate SHA-256: $HEX"
+echo "::notice::Signing certificate SHA-256: $HEX"
 
 python3 - "$APK_URL" "$HEX" "$START_URL" "$OUT/provisioning.json" <<'PY'
 import base64, json, sys

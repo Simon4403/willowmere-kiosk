@@ -73,8 +73,9 @@ jobs:
           KIOSK_KEYSTORE_PASSWORD: ${{ secrets.KIOSK_KEYSTORE_PASSWORD }}
           KIOSK_KEY_ALIAS: ${{ secrets.KIOSK_KEY_ALIAS }}
         run: |
-          sudo apt-get update -qq || true
-          sudo apt-get install -y -qq qrencode || pip install --quiet --user --break-system-packages "qrcode[pil]"
+          sudo apt-get update -qq || echo "::warning::apt-get update failed"
+          sudo apt-get install -y -qq qrencode || pip install --quiet --user --break-system-packages "qrcode[pil]" || echo "::warning::no QR tool installed"
+          ls -la dist/ || true
           bash scripts/make-provisioning.sh dist/willowmere-kiosk.apk \
             "${{ steps.urls.outputs.apk_url }}" "$KIOSK_START_URL" dist
 
