@@ -160,7 +160,7 @@ public class AdminActivity extends Activity {
         content.addView(hosts);
         content.addView(hint("The Willowmere site and its sub-domains are always allowed. Anything else is blocked."));
 
-        content.addView(label("Return to the start page after this many idle minutes (0 = never)"));
+        content.addView(label("Idle minutes: Hera locks to the staff PIN and the kiosk returns to the start page after this long untouched (0 = Hera's default of 5)"));
         EditText idle = field(String.valueOf(prefs.idleMinutes()), "0", InputType.TYPE_CLASS_NUMBER);
         content.addView(idle);
         content.addView(hint("Leave at 0 unless Willowmere saves work automatically: returning to the start page discards anything unsaved."));

@@ -29,6 +29,7 @@ final class Prefs {
     private static final String ALLOW_UPLOADS = "allow_uploads";
     private static final String BLOCK_USB_DEBUG = "block_usb_debug";
     private static final String IDLE_MINUTES = "idle_minutes";
+    private static final String BRIGHTNESS = "brightness";
     private static final String MAINTENANCE_UNTIL = "maintenance_until";
     private static final String FAILED_ATTEMPTS = "failed_attempts";
     private static final String LOCKOUT_UNTIL = "lockout_until";
@@ -152,13 +153,26 @@ final class Prefs {
         sp.edit().putBoolean(BLOCK_USB_DEBUG, v).apply();
     }
 
-    /** 0 = never return to the start page automatically. */
+    /**
+     * Idle minutes: the kiosk returns to the start page, and Hera locks to the
+     * staff member's PIN, after this long without a touch. 0 = the kiosk never
+     * returns to the start page and Hera uses its own default (5 minutes).
+     */
     int idleMinutes() {
-        return sp.getInt(IDLE_MINUTES, 0);
+        return sp.getInt(IDLE_MINUTES, 5);
     }
 
     void setIdleMinutes(int minutes) {
         sp.edit().putInt(IDLE_MINUTES, Math.max(0, minutes)).apply();
+    }
+
+    /** Screen brightness set with the volume buttons, 0.05 to 1. Negative = the tablet's own setting. */
+    float brightness() {
+        return sp.getFloat(BRIGHTNESS, -1f);
+    }
+
+    void setBrightness(float v) {
+        sp.edit().putFloat(BRIGHTNESS, v).apply();
     }
 
     // ----------------------------------------------------------------- PIN

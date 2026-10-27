@@ -137,3 +137,13 @@ app/src/main/java/com/heracaresolutions/kiosk/
 scripts/make-provisioning.sh      builds the QR code from the signed APK
 .github/workflows/build.yml       build, sign, QR, release
 ```
+
+
+## Brightness and idle time (27 Oct 2026)
+
+- The **volume buttons change screen brightness**, not volume, in steps of 10% (5% to 100%).
+  A badge shows the level; it is saved and re-applied after restarts.
+- **Idle minutes** (admin menu, default 5): after this long untouched the kiosk returns to the
+  start page, and Hera locks to the staff member's PIN after the same time. The kiosk tells
+  Hera through its user agent (`HeraIdle/5`); Hera accepts 1 to 30. 0 leaves Hera on its own
+  default of 5 minutes.

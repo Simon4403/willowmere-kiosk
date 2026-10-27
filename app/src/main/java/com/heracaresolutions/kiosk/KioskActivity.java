@@ -20,6 +20,7 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -73,6 +74,8 @@ public class KioskActivity extends Activity {
     private String failedUrl;
     private boolean mainFrameFailed;
     private long lastInteraction;
+    private TextView brightnessBadge;
+    private final Runnable hideBrightnessBadge = () -> { if (brightnessBadge != null) brightnessBadge.setVisibility(View.GONE); };
     private int keyboardPadding = -1;
 
     private final Runnable retryRunnable = this::retryNow;
@@ -106,6 +109,7 @@ public class KioskActivity extends Activity {
 
         createWebView();
         createOfflinePanel();
+        createBrightnessBadge();
         registerNetworkCallback();
 
         web.loadUrl(prefs.startUrl());
@@ -120,7 +124,9 @@ public class KioskActivity extends Activity {
         KioskPolicy.applyAll(this);
         enterLockTask();
         applyScreenOn();
+        applyBrightness();
         hideSystemBars();
+        applyUserAgent();
 
         if (web != null) {
             web.onResume();
@@ -286,7 +292,95 @@ public class KioskActivity extends Activity {
         }
     }
 
+    // ------------------------------------------------------- Brightness keys
+
+    /*
+     * The volume buttons adjust screen brightness instead of volume: on a ward
+     * tablet brightness is what staff need to change (dim at night, bright by a
+     * window), and the system brightness slider is out of reach in kiosk mode.
+     * The level is saved and applied to this window, so it survives restarts.
+     */
+    private static final float BRIGHTNESS_STEP = 0.1f, BRIGHTNESS_MIN = 0.05f;
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                float now = currentBrightness();
+                float next = code == KeyEvent.KEYCODE_VOLUME_UP ? now + BRIGHTNESS_STEP : now - BRIGHTNESS_STEP;
+                next = Math.max(BRIGHTNESS_MIN, Math.min(1f, next));
+                prefs.setBrightness(next);
+                applyBrightness();
+                showBrightnessBadge(next);
+                lastInteraction = SystemClock.elapsedRealtime();
+            }
+            return true;   // consumed: the volume never changes
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    private float currentBrightness() {
+        float saved = prefs.brightness();
+        if (saved >= 0) return saved;
+        try {
+            int sys = android.provider.Settings.System.getInt(getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS);
+            return Math.max(BRIGHTNESS_MIN, sys / 255f);
+        } catch (Exception e) {
+            return 0.5f;
+        }
+    }
+
+    private void applyBrightness() {
+        float b = prefs.brightness();
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = b >= 0 ? b : WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        getWindow().setAttributes(lp);
+    }
+
+    private void createBrightnessBadge() {
+        brightnessBadge = new TextView(this);
+        brightnessBadge.setTextColor(Color.WHITE);
+        brightnessBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        brightnessBadge.setTypeface(Typeface.DEFAULT_BOLD);
+        int pad = dp(18);
+        brightnessBadge.setPadding(pad * 2, pad, pad * 2, pad);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xDD05131F);
+        bg.setCornerRadius(dp(16));
+        brightnessBadge.setBackground(bg);
+        brightnessBadge.setVisibility(View.GONE);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        root.addView(brightnessBadge, lp);
+    }
+
+    private void showBrightnessBadge(float level) {
+        if (brightnessBadge == null) return;
+        brightnessBadge.setText("\u2600  Brightness " + Math.round(level * 100) + "%");
+        brightnessBadge.setVisibility(View.VISIBLE);
+        brightnessBadge.bringToFront();
+        handler.removeCallbacks(hideBrightnessBadge);
+        handler.postDelayed(hideBrightnessBadge, 1500);
+    }
+
     // ------------------------------------------------------------- WebView
+
+    private String baseUserAgent;
+
+    /*
+     * The user agent tells Hera two things: that it is on a kiosk tablet, and the
+     * idle minutes set in the kiosk menu (HeraIdle/5), so Hera locks to the PIN
+     * after the same time the kiosk uses. Re-applied on resume, so a change in
+     * the menu takes effect without a restart.
+     */
+    private void applyUserAgent() {
+        if (web == null || baseUserAgent == null) return;
+        String ua = baseUserAgent + " WillowmereKiosk/" + BuildConfig.VERSION_NAME;
+        int idle = prefs.idleMinutes();
+        if (idle > 0) ua += " HeraIdle/" + idle;
+        if (!ua.equals(web.getSettings().getUserAgentString())) web.getSettings().setUserAgentString(ua);
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     @SuppressWarnings("deprecation")
@@ -307,8 +401,8 @@ public class KioskActivity extends Activity {
         s.setDisplayZoomControls(false);
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(true);
-        // Lets Willowmere detect it's running on a kiosk tablet if it wants to.
-        s.setUserAgentString(s.getUserAgentString() + " WillowmereKiosk/" + BuildConfig.VERSION_NAME);
+        baseUserAgent = s.getUserAgentString();
+        applyUserAgent();
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
