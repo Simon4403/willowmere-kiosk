@@ -196,6 +196,21 @@ public class AdminActivity extends Activity {
             toast("Saved.");
         }));
 
+        // --- Printer
+        content.addView(section("Printer"));
+        TextView current = hint(printerSummary());
+        current.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        content.addView(current);
+        content.addView(button("Find printers on this Wi-Fi", false, v -> findPrinters(current)));
+        content.addView(button("Add a printer by IP address", false, v -> addPrinterByAddress(current)));
+        content.addView(button("Print a test page", false, v -> printTestPage()));
+        content.addView(button("Forget this printer", false, v -> {
+            prefs.setPrinter(null);
+            current.setText(printerSummary());
+        }));
+        content.addView(hint("Hera sends printouts straight to this printer over the Wi-Fi (IPP), as A4 landscape. "
+                + "Staff can also change the printer from Hera's Print screen. The printer must be on the same network as this tablet."));
+
         // --- Tablet
         content.addView(section("Tablet"));
         content.addView(button("Wi-Fi settings", false, v -> openSystemScreen(Settings.ACTION_WIFI_SETTINGS)));
@@ -229,6 +244,104 @@ public class AdminActivity extends Activity {
         content.addView(hint("Use this before giving the tablet a different job, uninstalling the app, or factory resetting it."));
 
         content.addView(button("Close admin menu", false, v -> finish()));
+    }
+
+    // ------------------------------------------------------------- Printer
+
+    private String printerSummary() {
+        org.json.JSONObject p = prefs.printer();
+        if (p == null) return "No printer chosen yet.";
+        String extra = p.optString("makeModel");
+        String addr = p.optString("address");
+        return "Printing to: " + p.optString("name") + (extra.isEmpty() ? "" : " (" + extra + ")") + (addr.isEmpty() ? "" : "\n" + addr
+                + (p.optBoolean("secure") ? ", encrypted (IPPS)" : ""));
+    }
+
+    private void findPrinters(TextView current) {
+        java.util.List<org.json.JSONObject> found = new java.util.ArrayList<>();
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Looking for printers…")
+                .setAdapter(adapter, (d, which) -> {
+                    org.json.JSONObject p = found.get(which);
+                    if (!p.optBoolean("supported")) {
+                        toast(p.optString("name") + " can't take PDF or IPP Everywhere printing, so the tablet can't use it.");
+                        return;
+                    }
+                    choose(p, current);
+                })
+                .setNegativeButton("Close", null)
+                .create();
+        dialog.show();
+        PrinterService.discover(this, (list, done, error) -> {
+            for (org.json.JSONObject p : list) {
+                int at = -1;
+                for (int i = 0; i < found.size(); i++) if (found.get(i).optString("id").equals(p.optString("id"))) at = i;
+                if (at >= 0) found.set(at, p); else found.add(p);
+            }
+            adapter.clear();
+            for (org.json.JSONObject p : found) {
+                String model = p.optString("makeModel");
+                adapter.add(p.optString("name") + (model.isEmpty() ? "" : "  ·  " + model) + "  ·  " + p.optString("address")
+                        + (p.optBoolean("supported") ? "" : "  (can't use)"));
+            }
+            adapter.notifyDataSetChanged();
+            if (done && dialog.isShowing()) {
+                dialog.setTitle(found.isEmpty() ? "No printers found" : "Choose a printer");
+                if (found.isEmpty()) toast(error != null ? error : "Check the printer is on and connected to the same Wi-Fi, or add it by IP address.");
+            }
+        });
+    }
+
+    private void addPrinterByAddress(TextView current) {
+        EditText ip = field("", "e.g. 192.168.1.40", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        new AlertDialog.Builder(this)
+                .setTitle("Add a printer by IP address")
+                .setMessage("The address is on the printer's network settings page, or a page it can print about its network.")
+                .setView(padded(ip))
+                .setPositiveButton("Check and use", (d, w) -> {
+                    toast("Checking " + ip.getText().toString().trim() + "…");
+                    PrinterService.probe(ip.getText().toString(), (list, done, error) -> {
+                        if (list.isEmpty()) {
+                            toast(error != null ? error : "No printer answered.");
+                            return;
+                        }
+                        org.json.JSONObject p = list.get(0);
+                        if (!p.optBoolean("supported")) {
+                            toast(p.optString("name") + " answered, but can't take PDF or IPP Everywhere printing.");
+                            return;
+                        }
+                        choose(p, current);
+                    });
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void choose(org.json.JSONObject p, TextView current) {
+        try {
+            org.json.JSONObject keep = new org.json.JSONObject();
+            for (String k : new String[]{"name", "uri", "id", "makeModel", "location", "address", "format", "secure"}) {
+                if (p.has(k)) keep.put(k, p.get(k));
+            }
+            prefs.setPrinter(keep);
+            current.setText(printerSummary());
+            toast("This tablet now prints to " + p.optString("name") + ".");
+        } catch (org.json.JSONException e) {
+            toast("That printer couldn't be saved.");
+        }
+    }
+
+    private void printTestPage() {
+        org.json.JSONObject p = prefs.printer();
+        if (p == null) {
+            toast("Choose a printer first.");
+            return;
+        }
+        toast("Sending a test page to " + p.optString("name") + "…");
+        PrinterService.print(this, p, PrinterService.testPage(p.optString("name")), "Hera kiosk test page", 1, (status, detail) -> {
+            if (!isFinishing()) toast(status + (detail == null || detail.isEmpty() ? "" : ": " + detail));
+        });
     }
 
     private void openSystemScreen(String action) {

@@ -18,7 +18,7 @@ willowmere-kiosk/app/src/main/res/xml/device_admin.xml          ->  app/src/main
 willowmere-kiosk/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml        -> same path
 willowmere-kiosk/app/src/main/res/drawable/ic_launcher_background.xml      -> same path
 willowmere-kiosk/app/src/main/res/drawable/ic_launcher_foreground.xml      -> same path
-willowmere-kiosk/app/src/main/java/com/heracaresolutions/kiosk/*.java     -> same path (12 files)
+willowmere-kiosk/app/src/main/java/com/heracaresolutions/kiosk/*.java     -> same path (16 files)
 
 Note: GitHub's phone upload can hide dot-folders. If .github/ or .gitignore
 don't appear, use the Codespaces route below.

@@ -109,6 +109,15 @@ final class KioskPolicy {
         run("allow apps", () -> dpm(c).setLockTaskPackages(admin(c), pkgs.toArray(new String[0])));
     }
 
+    /** Temporarily lets named apps open inside the locked kiosk (Android's print screen). */
+    static void allowPackages(Context c, String... packages) {
+        if (!isDeviceOwner(c)) return;
+        Set<String> pkgs = new LinkedHashSet<>();
+        pkgs.add(c.getPackageName());
+        for (String p : packages) if (p != null && !p.isEmpty()) pkgs.add(p);
+        run("allow packages", () -> dpm(c).setLockTaskPackages(admin(c), pkgs.toArray(new String[0])));
+    }
+
     /** Pauses the kiosk so the tablet behaves normally for a while. */
     static void suspendForMaintenance(Activity a) {
         if (isDeviceOwner(a)) {

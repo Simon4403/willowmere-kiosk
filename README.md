@@ -114,7 +114,9 @@ Admin menu → **Remove kiosk control from this tablet** → type `REMOVE`. You 
 ## Known limits (v1)
 
 - **Web push notifications don't work in an Android WebView**, so Willowmere push alerts won't appear on kiosk tablets. In-app polling or alerts still work.
-- Camera, microphone and location requests from the page are refused. File uploads use the system file picker.
+- Camera, microphone and location requests from the page are refused.
+- Printing reaches network printers on the tablet's own Wi-Fi only (IPP). USB, Bluetooth and
+  cloud-only printers aren't supported directly; use Android's print screen for those. File uploads use the system file picker.
 - Some Samsung tablets add their own menus. Test one tablet of each model first.
 - No remote management yet. Planned later.
 
@@ -133,6 +135,10 @@ app/src/main/java/com/heracaresolutions/kiosk/
   BootReceiver.java               relaunch after restart / update
   RelockReceiver.java             ends the 30-minute exit
   UpdateInstaller.java            download + install update
+  KioskBridge.java                window.HeraKiosk: printing for the Hera page only
+  PrinterService.java             find printers (mDNS / IP), send jobs, follow them, Android print screen fallback
+  Ipp.java                        small IPP client (no Android classes)
+  PwgRaster.java                  PWG Raster writer for printers that don't take PDF
   InstallResultReceiver.java      update install result
 scripts/make-provisioning.sh      builds the QR code from the signed APK
 .github/workflows/build.yml       build, sign, QR, release
@@ -147,3 +153,30 @@ scripts/make-provisioning.sh      builds the QR code from the signed APK
   start page, and Hera locks to the staff member's PIN after the same time. The kiosk tells
   Hera through its user agent (`HeraIdle/5`); Hera accepts 1 to 30. 0 leaves Hera on its own
   default of 5 minutes.
+
+
+## Printing (28 Oct 2026)
+
+Hera can print from the tablet straight to a network printer.
+
+- **Choosing the printer.** Admin menu → **Printer** → *Find printers on this Wi-Fi* (or *Add a
+  printer by IP address*), then *Print a test page*. Staff can also change it from Hera's Print
+  screen. The choice is kept on the tablet.
+- **How it prints.** Hera builds an A4 landscape PDF on its server and hands it to the kiosk app
+  (`window.HeraKiosk`). The app sends it to the printer with IPP: as PDF if the printer takes PDF,
+  otherwise rendered on the tablet to PWG Raster at 300 dpi, the format every IPP Everywhere /
+  Mopria printer accepts. IPPS (encrypted) is used when the printer offers it.
+- **Following the job.** The app asks the printer about the job until it has printed, failed or
+  been cancelled (for up to 3 minutes), and passes each step back to Hera, which records it in
+  its print log (Governance → Printing).
+- **Fallback.** If the printer can't take either format, or doesn't answer, staff can use
+  **Android's print screen** from the same dialog. The print spooler is let into the locked
+  kiosk only while it is open.
+- **Safety.** The bridge only answers the Hera site set as the start address, never an extra
+  allowed site. Jobs only go to addresses on the local network (private IPv4 ranges,
+  link-local, IPv6 local, `.local`), never across the internet. Printer certificates are
+  self-signed, so IPPS encrypts without checking identity: keep printers on the care home's
+  own Wi-Fi, not a guest network.
+- **Printers that work:** any printer that supports AirPrint, Mopria or IPP Everywhere (almost
+  every networked printer made since about 2015). Check *IPP* is switched on in the printer's
+  web settings if it isn't found.

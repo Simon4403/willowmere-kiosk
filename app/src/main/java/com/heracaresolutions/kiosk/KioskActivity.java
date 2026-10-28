@@ -77,6 +77,8 @@ public class KioskActivity extends Activity {
     private TextView brightnessBadge;
     private final Runnable hideBrightnessBadge = () -> { if (brightnessBadge != null) brightnessBadge.setVisibility(View.GONE); };
     private int keyboardPadding = -1;
+    /** Host of the page now showing, for the printing bridge (see isHeraPage). Set on the UI thread, read from the bridge's. */
+    private volatile String pageHost;
 
     private final Runnable retryRunnable = this::retryNow;
 
@@ -408,6 +410,8 @@ public class KioskActivity extends Activity {
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(web, false);
 
+        // Printing for Hera (window.HeraKiosk). Every call checks the page is Hera's own.
+        web.addJavascriptInterface(new KioskBridge(this), "HeraKiosk");
         web.setWebViewClient(new KioskClient());
         web.setWebChromeClient(new KioskChrome());
         web.setDownloadListener((url, userAgent, contentDisposition, mimeType, length) ->
@@ -443,6 +447,12 @@ public class KioskActivity extends Activity {
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             mainFrameFailed = false;
+            pageHost = hostOf(url);
+        }
+
+        @Override
+        public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+            pageHost = hostOf(url);
         }
 
         @Override
@@ -590,6 +600,30 @@ public class KioskActivity extends Activity {
         } catch (Exception e) {
             networkCallback = null;
         }
+    }
+
+    // ------------------------------------------------------------ Printing
+
+    /** True when the page showing is the Hera site this kiosk was set up for (not an extra allowed site). */
+    boolean isHeraPage() {
+        String start = hostOf(prefs.startUrl());
+        String now = pageHost;
+        return start != null && start.equals(now);
+    }
+
+    /** Calls window.HeraKioskEvents.<name>(args) in the page. Args must already be JavaScript literals. */
+    void sendEvent(String name, String... args) {
+        runOnUiThread(() -> {
+            if (web == null || !isHeraPage()) return;
+            web.evaluateJavascript("window.HeraKioskEvents&&window.HeraKioskEvents." + name + "&&window.HeraKioskEvents."
+                    + name + "(" + String.join(",", args) + ")", null);
+        });
+    }
+
+    private static String hostOf(String url) {
+        if (url == null) return null;
+        String h = Uri.parse(url).getHost();
+        return h == null ? null : h.toLowerCase(java.util.Locale.ROOT);
     }
 
     // --------------------------------------------------------------- Utils

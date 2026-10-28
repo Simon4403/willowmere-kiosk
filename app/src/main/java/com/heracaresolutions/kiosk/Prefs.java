@@ -35,6 +35,7 @@ final class Prefs {
     private static final String LOCKOUT_UNTIL = "lockout_until";
     private static final String RELOAD_PENDING = "reload_pending";
     private static final String CLEAR_CACHE_PENDING = "clear_cache_pending";
+    private static final String PRINTER = "printer_json";
 
     static final int MIN_PIN_LENGTH = 6;
     static final int MAX_PIN_LENGTH = 12;
@@ -173,6 +174,24 @@ final class Prefs {
 
     void setBrightness(float v) {
         sp.edit().putFloat(BRIGHTNESS, v).apply();
+    }
+
+    // ------------------------------------------------------------- Printer
+
+    /** The network printer this tablet prints to, or null. Kept as Hera describes it (name, uri, id...). */
+    org.json.JSONObject printer() {
+        String v = sp.getString(PRINTER, null);
+        if (TextUtils.isEmpty(v)) return null;
+        try {
+            org.json.JSONObject p = new org.json.JSONObject(v);
+            return p.optString("uri").isEmpty() ? null : p;
+        } catch (org.json.JSONException e) {
+            return null;
+        }
+    }
+
+    void setPrinter(org.json.JSONObject printer) {
+        sp.edit().putString(PRINTER, printer == null ? "" : printer.toString()).apply();
     }
 
     // ----------------------------------------------------------------- PIN
