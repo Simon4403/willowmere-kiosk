@@ -32,6 +32,7 @@ final class PinDialog {
 
         EditText pin = new EditText(activity);
         pin.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        NoEchoMask.apply(pin);                         // no flash of the last digit
         pin.setHint("Admin PIN");
         pin.setSingleLine(true);
 

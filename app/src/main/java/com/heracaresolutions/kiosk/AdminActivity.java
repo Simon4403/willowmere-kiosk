@@ -115,6 +115,7 @@ public class AdminActivity extends Activity {
         content.addView(confirm);
         content.addView(label("Willowmere address"));
         content.addView(url);
+        content.addView(presets(url));
         content.addView(status());
 
         content.addView(button("Save and start kiosk", false, v -> {
@@ -154,6 +155,7 @@ public class AdminActivity extends Activity {
         content.addView(label("Willowmere address"));
         EditText url = field(prefs.startUrl(), "https://…", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         content.addView(url);
+        content.addView(presets(url));
 
         content.addView(label("Other sites the kiosk may open (comma separated)"));
         EditText hosts = field(prefs.allowedHostsRaw(), "e.g. login.microsoftonline.com", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
@@ -486,6 +488,43 @@ public class AdminActivity extends Activity {
         return v;
     }
 
+    /*
+     * Ready-made addresses, so a tablet can be switched between the live home and
+     * the demonstration home without typing a long Azure address on the tablet.
+     * Tapping one fills the address box; nothing changes until Save is pressed.
+     * The demonstration home's sign-in page has one-tap logins for its made-up staff.
+     */
+    private static final String[][] PRESETS = {
+            {"Leighton House", "https://hera-leighton-house.azurewebsites.net/"},
+            {"Hera demo (Ashdown Lodge)", "https://hera-demo-eqf4gyeacuaaexbf.ukwest-01.azurewebsites.net/"},
+    };
+
+    private View presets(EditText url) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(hint("Or choose a preset:"));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < PRESETS.length; i++) {
+            String name = PRESETS[i][0];
+            String address = PRESETS[i][1];
+            Button b = new Button(this);
+            b.setText(name);
+            b.setAllCaps(false);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            b.setOnClickListener(v -> {
+                url.setText(address);
+                url.setError(null);
+                toast(name + " selected. Press Save to use it.");
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > 0) lp.leftMargin = dp(8);
+            row.addView(b, lp);
+        }
+        box.addView(row);
+        return box;
+    }
+
     private TextView section(String title) {
         TextView v = text(title, 20, true, INK);
         v.setPadding(0, dp(28), 0, dp(4));
@@ -519,6 +558,10 @@ public class AdminActivity extends Activity {
         e.setHint(hint);
         e.setInputType(inputType);
         e.setSingleLine(true);
+        if ((inputType & InputType.TYPE_MASK_VARIATION) == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                && (inputType & InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_NUMBER) {
+            NoEchoMask.apply(e);                       // after setInputType, which resets it
+        }
         e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         return e;
     }

@@ -402,6 +402,12 @@ public class KioskActivity extends Activity {
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
         s.setUseWideViewPort(true);
+        s.setSaveFormData(false);                     // shared tablet: no remembered form entries
+        // No "Save password?" or autofill pop-ups: they show the password in clear and
+        // would offer one person's login to the next person who picks up the tablet.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        }
         s.setLoadWithOverviewMode(true);
         baseUserAgent = s.getUserAgentString();
         applyUserAgent();
