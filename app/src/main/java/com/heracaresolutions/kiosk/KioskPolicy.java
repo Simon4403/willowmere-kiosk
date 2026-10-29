@@ -83,6 +83,9 @@ final class KioskPolicy {
                 d.clearUserRestriction(a, UserManager.DISALLOW_DEBUGGING_FEATURES);
             }
         });
+        // Hera's camera works without anyone having to answer Android's "Allow camera?" prompt.
+        run("camera permission", () -> d.setPermissionGrantState(a, c.getPackageName(),
+                android.Manifest.permission.CAMERA, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED));
         // Android system updates install overnight (02:00-05:00) rather than mid-shift.
         run("update window", () -> d.setSystemUpdatePolicy(a, SystemUpdatePolicy.createWindowedInstallPolicy(120, 300)));
         run("stay on while charging", () -> d.setGlobalSetting(a, Settings.Global.STAY_ON_WHILE_PLUGGED_IN,
@@ -107,6 +110,12 @@ final class KioskPolicy {
             if (ri.activityInfo != null) pkgs.add(ri.activityInfo.packageName);
         }
         run("allow apps", () -> dpm(c).setLockTaskPackages(admin(c), pkgs.toArray(new String[0])));
+    }
+
+    /** Android's own permission prompt, so it can appear inside the locked kiosk. */
+    static void allowPermissionPrompt(Context c) {
+        allowPackages(c, "com.google.android.permissioncontroller", "com.android.permissioncontroller",
+                "com.android.packageinstaller", "com.google.android.packageinstaller");
     }
 
     /** Temporarily lets named apps open inside the locked kiosk (Android's print screen). */

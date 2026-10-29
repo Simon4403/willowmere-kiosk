@@ -1,5 +1,7 @@
 package com.heracaresolutions.kiosk;
 
+import android.content.pm.PackageManager;
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
@@ -55,6 +57,9 @@ public class KioskActivity extends Activity {
     private static final String TAG = "Kiosk";
 
     private static final int REQUEST_FILE = 41;
+    private static final int REQUEST_CAMERA = 42;
+    /** A camera request from the page, waiting for Android's "Allow camera?" answer. */
+    private PermissionRequest pendingCameraRequest;
     private static final int CORNER_TAPS = 7;
     private static final long CORNER_TAP_WINDOW_MS = 4000;
     private static final int CORNER_SIZE_DP = 96;
@@ -207,6 +212,47 @@ public class KioskActivity extends Activity {
         if (pendingFileCallback != null) {
             pendingFileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
             pendingFileCallback = null;
+        }
+    }
+
+    // ---------------------------------------------------------------- Camera
+
+    private void handleCameraRequest(PermissionRequest request) {
+        boolean wantsCamera = false, wantsOther = false;
+        for (String r : request.getResources()) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) wantsCamera = true;
+            else wantsOther = true;
+        }
+        String origin = request.getOrigin() == null ? null : hostOf(request.getOrigin().toString());
+        String hera = hostOf(prefs.startUrl());
+        if (!wantsCamera || wantsOther || hera == null || !hera.equals(origin)) {
+            request.deny();
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+            return;
+        }
+        // First time on a tablet that isn't fully managed: ask Android once.
+        if (pendingCameraRequest != null) pendingCameraRequest.deny();
+        pendingCameraRequest = request;
+        KioskPolicy.allowPermissionPrompt(this);
+        requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode != REQUEST_CAMERA) return;
+        KioskPolicy.restoreLockTask(this);
+        PermissionRequest request = pendingCameraRequest;
+        pendingCameraRequest = null;
+        if (request == null) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+            request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+        } else {
+            request.deny();
+            toast("Camera not allowed. Allow it in the tablet's settings for Willowmere Kiosk.");
         }
     }
 
@@ -522,9 +568,19 @@ public class KioskActivity extends Activity {
             return true;
         }
 
+        /*
+         * Camera for Hera's in-page photo taking (resident and wound photos). Only
+         * Hera's own site gets it, only the camera (never the microphone), and only
+         * while the page is open; the page stops the camera when the photo dialog closes.
+         */
         @Override
         public void onPermissionRequest(PermissionRequest request) {
-            request.deny(); // camera / microphone not used yet
+            runOnUiThread(() -> handleCameraRequest(request));
+        }
+
+        @Override
+        public void onPermissionRequestCanceled(PermissionRequest request) {
+            if (request == pendingCameraRequest) pendingCameraRequest = null;
         }
 
         @Override

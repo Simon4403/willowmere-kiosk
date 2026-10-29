@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Hera's in-page camera (resident photos, wound photos). Hera's own site only. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <!-- Needed to find the Wi-Fi settings / file picker apps so they can be briefly allowed inside the kiosk -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
