@@ -265,9 +265,8 @@ final class PrinterService {
             }
         }
 
-        @SuppressWarnings("deprecation")
         private void onResolved(NsdServiceInfo info) {
-            InetAddress host = info.getHost();
+            InetAddress host = bestAddress(info);
             if (host == null) return;
             String ip = host.getHostAddress();
             if (ip == null) return;
@@ -280,7 +279,7 @@ final class PrinterService {
             if (rp.isEmpty()) rp = "ipp/print";
             String hostPart = ip.contains(":") ? "[" + ip + "]" : ip;
             String uri = (secure ? "ipps" : "ipp") + "://" + hostPart + ":" + info.getPort() + "/" + rp;
-            String id = firstNonEmpty(txt(txt, "UUID"), ip);
+            String id = firstNonEmpty(Ipp.sameId(txt(txt, "UUID")), ip);
             JSONObject existing = byId.get(id);
             if (existing != null && (existing.optBoolean("secure") || !secure)) return;   // already have it (ipps preferred)
             String name = info.getServiceName();
@@ -311,6 +310,35 @@ final class PrinterService {
                 });
             });
         }
+    }
+
+    /*
+     * Which of a printer's addresses to use. Android 14+ can hand back several, often
+     * the IPv6 link-local one first; that can't be reached without its interface
+     * name, which a printer link can't carry. So: IPv4 first, then a routable IPv6
+     * (unique-local), and link-local only as a last resort.
+     */
+    @SuppressWarnings("deprecation")
+    static InetAddress bestAddress(NsdServiceInfo info) {
+        java.util.List<InetAddress> all = new java.util.ArrayList<>();
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                all.addAll(info.getHostAddresses());
+            } catch (Throwable ignored) {
+            }
+        }
+        if (all.isEmpty() && info.getHost() != null) all.add(info.getHost());
+        InetAddress v6 = null, linkLocal = null;
+        for (InetAddress a : all) {
+            if (a == null) continue;
+            if (a instanceof java.net.Inet4Address) return a;
+            if (a.isLinkLocalAddress()) {
+                if (linkLocal == null) linkLocal = a;
+            } else if (v6 == null) {
+                v6 = a;
+            }
+        }
+        return v6 != null ? v6 : linkLocal;
     }
 
     /** Checks an IP address (or host) typed by hand. */
@@ -487,14 +515,15 @@ final class PrinterService {
 
     /** Looks for the same printer (by id) at a new address. Blocking; call off the main thread. */
     private static JSONObject findAgain(Context context, JSONObject printer) {
-        String id = printer.optString("id");
+        // Ids differ in form depending on how the printer was added (Wi-Fi list vs by IP), so compare via sameId.
+        String id = Ipp.sameId(printer.optString("id"));
         if (id.isEmpty()) return null;
         final JSONObject[] hit = {null};
         final Object lock = new Object();
         final boolean[] done = {false};
         MAIN.post(() -> discover(context, (list, finished, error) -> {
             for (JSONObject p : list) {
-                if (id.equals(p.optString("id")) && p.optBoolean("supported")) hit[0] = p;
+                if (id.equals(Ipp.sameId(p.optString("id"))) && p.optBoolean("supported")) hit[0] = p;
             }
             if (finished || hit[0] != null) {
                 synchronized (lock) {
@@ -633,7 +662,10 @@ final class PrinterService {
             post(status, "Failed", "This tablet has no print service.");
             return;
         }
-        KioskPolicy.allowPackages(activity, PRINT_SPOOLER);
+        // The print screen is the spooler, but print plug-ins (Mopria, HP, Samsung, Android's
+        // default service) open their own screens from it: first-run consent, "add printer",
+        // certificate prompts. Lock task would block those and leave staff stuck, so let them in too.
+        KioskPolicy.allowPackages(activity, printPackages(activity));
         PrintAttributes attrs = new PrintAttributes.Builder()
                 .setMediaSize(PrintAttributes.MediaSize.ISO_A4.asLandscape())
                 .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
@@ -674,6 +706,21 @@ final class PrinterService {
             }
         };
         MAIN.postDelayed(poll, 2000);
+    }
+
+    /** The print spooler plus every installed print service (from android.printservice.PrintService). */
+    static String[] printPackages(Context context) {
+        java.util.Set<String> pkgs = new java.util.LinkedHashSet<>();
+        pkgs.add(PRINT_SPOOLER);
+        try {
+            for (android.content.pm.ResolveInfo ri : context.getPackageManager().queryIntentServices(
+                    new android.content.Intent("android.printservice.PrintService"), 0)) {
+                if (ri.serviceInfo != null && ri.serviceInfo.packageName != null) pkgs.add(ri.serviceInfo.packageName);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "print services", e);
+        }
+        return pkgs.toArray(new String[0]);
     }
 
     /** Hands an existing PDF file to Android's print framework. */

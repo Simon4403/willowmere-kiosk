@@ -49,7 +49,12 @@ final class Ipp {
             URI_TAG = 0x45, CHARSET = 0x47, LANGUAGE = 0x48, MIME = 0x49, MEMBER_NAME = 0x4A;
 
     static final int CONNECT_TIMEOUT_MS = 5000;
+    /** Waiting for a printer to accept a whole job (large documents, slow printers). */
     static final int READ_TIMEOUT_MS = 60_000;
+    /** Questions (what are you, how is my job): a printer answers these at once or not at all. */
+    static final int QUICK_READ_TIMEOUT_MS = 15_000;
+    /** TLS hello. A printer with no TLS on that port may just sit silent, so don't wait long. */
+    static final int HANDSHAKE_TIMEOUT_MS = 6000;
     private static int requestId = 1;
 
     private Ipp() {
@@ -273,16 +278,22 @@ final class Ipp {
 
     /** Sends a request (and an optional document after it) and returns the parsed response. */
     static Response send(String printerUri, byte[] request, byte[] document) throws IOException {
+        return send(printerUri, request, document, document == null ? QUICK_READ_TIMEOUT_MS : READ_TIMEOUT_MS);
+    }
+
+    static Response send(String printerUri, byte[] request, byte[] document, int readTimeoutMs) throws IOException {
         URI u = URI.create(printerUri);
         String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(Locale.ROOT);
         boolean tls = scheme.equals("ipps") || scheme.equals("https");
         if (!tls && !scheme.equals("ipp") && !scheme.equals("http")) throw new IOException("Not a printer address: " + printerUri);
         String host = u.getHost();
         if (host == null || !isLocalHost(host)) throw new IOException("Printers must be on this tablet's own network");
+        // URI.getHost() keeps the brackets on IPv6 addresses ("[fd00::25]"); work with the bare address.
+        if (host.startsWith("[") && host.endsWith("]")) host = host.substring(1, host.length() - 1);
         int port = u.getPort() > 0 ? u.getPort() : 631;
         String path = u.getRawPath() == null || u.getRawPath().isEmpty() ? "/ipp/print" : u.getRawPath();
 
-        try (Socket socket = open(host, port, tls)) {
+        try (Socket socket = open(host, port, tls, readTimeoutMs)) {
             OutputStream out = socket.getOutputStream();
             int length = request.length + (document == null ? 0 : document.length);
             String hostHeader = host.contains(":") ? "[" + host + "]" : host;
@@ -304,10 +315,10 @@ final class Ipp {
         }
     }
 
-    private static Socket open(String host, int port, boolean tls) throws IOException {
+    private static Socket open(String host, int port, boolean tls, int readTimeoutMs) throws IOException {
         Socket plain = new Socket();
         plain.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-        plain.setSoTimeout(READ_TIMEOUT_MS);
+        plain.setSoTimeout(readTimeoutMs);
         if (!tls) return plain;
         try {
             // Printers ship self-signed certificates, so there is no chain to check.
@@ -329,8 +340,9 @@ final class Ipp {
                 }
             }}, new SecureRandom());
             SSLSocket s = (SSLSocket) ctx.getSocketFactory().createSocket(plain, host, port, true);
-            s.setSoTimeout(READ_TIMEOUT_MS);
+            s.setSoTimeout(HANDSHAKE_TIMEOUT_MS);
             s.startHandshake();
+            s.setSoTimeout(readTimeoutMs);
             return s;
         } catch (IOException e) {
             plain.close();
@@ -441,6 +453,16 @@ final class Ipp {
         return false;
     }
 
+    /**
+     * One printer, however it was found: mDNS TXT gives "UUID=6d4c…" while IPP's
+     * printer-uuid says "urn:uuid:6D4C…". Compare ids through this.
+     */
+    static String sameId(String id) {
+        if (id == null) return "";
+        String s = id.trim().toLowerCase(Locale.ROOT);
+        return s.startsWith("urn:uuid:") ? s.substring(9) : s;
+    }
+
     // ------------------------------------------------------- operations
 
     static final String[] PRINTER_ATTRIBUTES = {
@@ -521,7 +543,9 @@ final class Ipp {
                 case "job-canceled-at-device": t = "cancelled at the printer"; break;
                 case "job-canceled-by-user": t = "cancelled"; break;
                 case "aborted-by-system": t = "the printer gave up on it"; break;
-                case "document-format-error": t = "the printer couldn't read the document"; break;
+                // (matched without the -error/-warning/-report ending, removed above)
+                case "document-format": t = "the printer couldn't read the document"; break;
+                case "document-unprintable": t = "the printer couldn't print the document"; break;
                 case "job-completed-successfully": case "job-printing": case "job-incoming": case "job-queued":
                 case "processing-to-stop-point": case "job-data-insufficient": case "printer-stopped-partly":
                     continue;
