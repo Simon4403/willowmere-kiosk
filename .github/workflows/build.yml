@@ -67,6 +67,29 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/willowmere-kiosk.apk
 
+      # Tablets read this on launch to find out whether a newer app exists (AutoUpdater.java).
+      # apkUrl is pinned to this release's tag, so it always matches the checksum, even while
+      # a newer release is still uploading.
+      - name: Write update manifest (version.json)
+        env:
+          OVERRIDE: ${{ vars.KIOSK_APK_URL }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          if [ -n "$OVERRIDE" ]; then
+            PINNED="$OVERRIDE"
+          else
+            PINNED="https://github.com/${GITHUB_REPOSITORY}/releases/download/v1.0.${VERSION_CODE}/willowmere-kiosk.apk"
+          fi
+          SHA=$(sha256sum dist/willowmere-kiosk.apk | cut -d' ' -f1)
+          python3 - "$VERSION_CODE" "$PINNED" "$SHA" > dist/version.json <<'PY'
+          import json, sys
+          code, url, sha = sys.argv[1:4]
+          print(json.dumps({"versionCode": int(code), "versionName": "1.0." + code,
+                            "apkUrl": url, "sha256": sha}, indent=2))
+          PY
+          cat dist/version.json
+          echo "::notice::Published update manifest for version 1.0.${VERSION_CODE}"
+
       - name: Make provisioning QR code
         env:
           KIOSK_KEYSTORE_PATH: ${{ runner.temp }}/kiosk-release.jks
@@ -94,3 +117,4 @@ jobs:
             dist/willowmere-kiosk.apk
             dist/provisioning-qr.png
             dist/provisioning.json
+            dist/version.json

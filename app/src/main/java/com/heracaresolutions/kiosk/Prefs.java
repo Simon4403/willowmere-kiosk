@@ -36,6 +36,10 @@ final class Prefs {
     private static final String RELOAD_PENDING = "reload_pending";
     private static final String CLEAR_CACHE_PENDING = "clear_cache_pending";
     private static final String PRINTER = "printer_json";
+    private static final String AUTO_UPDATE = "auto_update";
+    private static final String LAST_UPDATE_CHECK = "last_update_check";
+    private static final String FAILED_UPDATE_VERSION = "failed_update_version";
+    private static final String FAILED_UPDATE_AT = "failed_update_at";
 
     static final int MIN_PIN_LENGTH = 6;
     static final int MAX_PIN_LENGTH = 12;
@@ -174,6 +178,38 @@ final class Prefs {
 
     void setBrightness(float v) {
         sp.edit().putFloat(BRIGHTNESS, v).apply();
+    }
+
+    // ------------------------------------------------------------- Updates
+
+    /** Check for and install kiosk app updates each time the app starts. On by default. */
+    boolean autoUpdate() {
+        return sp.getBoolean(AUTO_UPDATE, true);
+    }
+
+    void setAutoUpdate(boolean v) {
+        sp.edit().putBoolean(AUTO_UPDATE, v).apply();
+    }
+
+    long lastUpdateCheck() {
+        long v = sp.getLong(LAST_UPDATE_CHECK, 0);
+        return v > System.currentTimeMillis() ? 0 : v; // clock wound back: don't block checks
+    }
+
+    void setLastUpdateCheck(long at) {
+        sp.edit().putLong(LAST_UPDATE_CHECK, at).apply();
+    }
+
+    void recordUpdateFailure(int versionCode) {
+        sp.edit().putInt(FAILED_UPDATE_VERSION, versionCode)
+                .putLong(FAILED_UPDATE_AT, System.currentTimeMillis()).commit();
+    }
+
+    /** True if this version failed to install within the last {@code withinMs}. */
+    boolean updateRecentlyFailed(int versionCode, long withinMs) {
+        if (sp.getInt(FAILED_UPDATE_VERSION, 0) != versionCode) return false;
+        long age = System.currentTimeMillis() - sp.getLong(FAILED_UPDATE_AT, 0);
+        return age >= 0 && age < withinMs;
     }
 
     // ------------------------------------------------------------- Printer

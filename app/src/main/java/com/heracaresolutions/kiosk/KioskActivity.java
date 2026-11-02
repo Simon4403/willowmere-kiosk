@@ -56,6 +56,17 @@ import java.util.ArrayDeque;
 public class KioskActivity extends Activity {
     private static final String TAG = "Kiosk";
 
+    /** Sent by InstallResultReceiver when Android rejects an update, to remove the "Updating…" screen. */
+    static final String ACTION_UPDATE_FAILED = "com.heracaresolutions.kiosk.UPDATE_FAILED";
+    /** If an install hasn't restarted the app by now, give the tablet back to staff. */
+    private static final long UPDATE_SCREEN_TIMEOUT_MS = 3 * 60_000L;
+
+    private View updatePanel;
+    private TextView updateDetail;
+    /** The launch check found no network; run it when Wi-Fi connects. */
+    private boolean updateCheckPending;
+    private final Runnable updateTimeout = this::hideUpdating;
+
     private static final int REQUEST_FILE = 41;
     private static final int REQUEST_CAMERA = 42;
     /** A camera request from the page, waiting for Android's "Allow camera?" answer. */
@@ -117,9 +128,95 @@ public class KioskActivity extends Activity {
         createWebView();
         createOfflinePanel();
         createBrightnessBadge();
+        createUpdatePanel();
         registerNetworkCallback();
 
         web.loadUrl(prefs.startUrl());
+        checkForUpdate();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (ACTION_UPDATE_FAILED.equals(intent.getAction())) hideUpdating();
+    }
+
+    // ------------------------------------------------------- Auto update
+
+    /** Runs on every launch (and after a restart). Installs a newer kiosk app if one has been published. */
+    private void checkForUpdate() {
+        // No PIN yet means first-run set-up is on screen; update next time rather than interrupt it.
+        if (!prefs.hasPin()) return;
+        updateCheckPending = false;
+        AutoUpdater.check(this, false, new AutoUpdater.Listener() {
+            @Override
+            public void onInstallStarting(String versionName) {
+                showUpdating("Installing version " + versionName + ".\nThis takes under a minute; the tablet restarts Willowmere by itself.");
+            }
+
+            @Override
+            public void onResult(AutoUpdater.Result result, String detail) {
+                Log.i(TAG, "Update check: " + result + " - " + detail);
+                switch (result) {
+                    case NO_NETWORK:
+                        updateCheckPending = true;
+                        break;
+                    case INSTALL_FAILED:
+                        hideUpdating();
+                        break;
+                    default:
+                        break; // INSTALLING: keep the screen up until Android restarts the app
+                }
+            }
+        });
+    }
+
+    private void createUpdatePanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER);
+        panel.setBackgroundColor(Color.parseColor("#F4F1EA"));
+        int pad = dp(40);
+        panel.setPadding(pad, pad, pad, pad);
+        panel.setClickable(true); // swallow taps so nothing is typed into a page about to restart
+
+        android.widget.ProgressBar spinner = new android.widget.ProgressBar(this);
+        panel.addView(spinner, new LinearLayout.LayoutParams(dp(64), dp(64)));
+
+        TextView title = new TextView(this);
+        title.setText("Updating Willowmere Kiosk");
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(Color.parseColor("#1F3D33"));
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, dp(24), 0, 0);
+
+        updateDetail = new TextView(this);
+        updateDetail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        updateDetail.setTextColor(Color.parseColor("#4A5A54"));
+        updateDetail.setGravity(Gravity.CENTER);
+        updateDetail.setPadding(0, dp(16), 0, 0);
+
+        panel.addView(title);
+        panel.addView(updateDetail);
+        panel.setVisibility(View.GONE);
+        updatePanel = panel;
+        root.addView(panel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void showUpdating(String detail) {
+        if (updatePanel == null) return;
+        updateDetail.setText(detail);
+        updatePanel.setVisibility(View.VISIBLE);
+        updatePanel.bringToFront();
+        handler.removeCallbacks(updateTimeout);
+        handler.postDelayed(updateTimeout, UPDATE_SCREEN_TIMEOUT_MS);
+    }
+
+    private void hideUpdating() {
+        handler.removeCallbacks(updateTimeout);
+        if (updatePanel != null) updatePanel.setVisibility(View.GONE);
     }
 
     @Override
@@ -654,6 +751,8 @@ public class KioskActivity extends Activity {
             public void onAvailable(Network network) {
                 handler.post(() -> {
                     if (offlinePanel != null && offlinePanel.getVisibility() == View.VISIBLE) retryNow();
+                    // The launch check ran before Wi-Fi was up (typical straight after a restart).
+                    if (updateCheckPending) checkForUpdate();
                 });
             }
         };

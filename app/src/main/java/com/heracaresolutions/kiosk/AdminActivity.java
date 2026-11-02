@@ -234,7 +234,17 @@ public class AdminActivity extends Activity {
                     finish();
                 })));
         content.addView(button("Change admin PIN", false, v -> changePin()));
-        content.addView(button("Install kiosk app update", false, v -> promptUpdate()));
+
+        // --- Updates
+        content.addView(section("App updates"));
+        Switch autoUpdate = toggle("Install kiosk updates automatically", prefs.autoUpdate());
+        autoUpdate.setOnCheckedChangeListener((b, on) -> prefs.setAutoUpdate(on));
+        content.addView(autoUpdate);
+        content.addView(hint(owner
+                ? "Checked each time the kiosk starts, including after a restart. New versions install silently and Willowmere reopens by itself."
+                : "Automatic updates need full protection (QR set-up). Use the buttons below to update by hand."));
+        content.addView(button("Check for updates now", false, v -> checkUpdatesNow()));
+        content.addView(button("Install kiosk app update from a link", false, v -> promptUpdate()));
 
         // --- Leaving the kiosk
         content.addView(section("Leave kiosk"));
@@ -426,6 +436,25 @@ public class AdminActivity extends Activity {
             toast("PIN changed.");
         }));
         dialog.show();
+    }
+
+    private void checkUpdatesNow() {
+        toast("Checking for updates…");
+        AutoUpdater.check(this, true, new AutoUpdater.Listener() {
+            @Override
+            public void onInstallStarting(String versionName) {
+                toast("Downloading version " + versionName + "…");
+            }
+
+            @Override
+            public void onResult(AutoUpdater.Result result, String detail) {
+                if (result == AutoUpdater.Result.INSTALLING) {
+                    toast(detail + ". Willowmere reopens by itself when it's done.");
+                } else {
+                    toast(detail);
+                }
+            }
+        });
     }
 
     private void promptUpdate() {
