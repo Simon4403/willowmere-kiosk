@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Hera's in-page camera (resident photos, wound photos). Hera's own site only. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Only used to read the tablet's serial number for Hera's device list, and only when
+         "Send this tablet's serial number to Hera" is switched on in the admin menu on a
+         device-owner tablet. Android gives the serial to a device owner holding this permission. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <!-- Needed to find the Wi-Fi settings / file picker apps so they can be briefly allowed inside the kiosk -->
