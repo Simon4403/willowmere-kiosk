@@ -28,6 +28,7 @@ final class Prefs {
     private static final String KEEP_SCREEN_ON = "keep_screen_on";
     private static final String ALLOW_UPLOADS = "allow_uploads";
     private static final String BLOCK_USB_DEBUG = "block_usb_debug";
+    private static final String SHARE_SERIAL = "share_serial";
     private static final String IDLE_MINUTES = "idle_minutes";
     private static final String BRIGHTNESS = "brightness";
     private static final String MAINTENANCE_UNTIL = "maintenance_until";
@@ -156,6 +157,18 @@ final class Prefs {
 
     void setBlockUsbDebugging(boolean v) {
         sp.edit().putBoolean(BLOCK_USB_DEBUG, v).apply();
+    }
+
+    /**
+     * Send the tablet's hardware serial number to Hera's device list. Off by default.
+     * Only works with full protection (device owner): see KioskPolicy.serial().
+     */
+    boolean shareSerial() {
+        return sp.getBoolean(SHARE_SERIAL, false);
+    }
+
+    void setShareSerial(boolean v) {
+        sp.edit().putBoolean(SHARE_SERIAL, v).apply();
     }
 
     /**
@@ -342,6 +355,9 @@ final class Prefs {
         if (hosts != null) e.putString(ALLOWED_HOSTS, hosts.trim());
         String update = extras.getString("update_url");
         if (!TextUtils.isEmpty(update)) e.putString(UPDATE_URL, update.trim());
+        // "share_serial": "true" in the QR code switches the serial number on for a whole batch of tablets.
+        String serial = extras.getString("share_serial");
+        if (serial != null) e.putBoolean(SHARE_SERIAL, "true".equalsIgnoreCase(serial.trim()));
         e.commit();
     }
 

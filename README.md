@@ -199,7 +199,7 @@ Hera keeps a list of every tablet, per care home (System Administrator → Home 
 - The Hera page calls it at sign-in and every half hour and sends it to the server, so the list shows when each tablet was last used and by whom.
 - It only answers the Hera site set as the start address, like the printing calls. It reads; it changes nothing on the tablet.
 - The id is Android's per-app device id. It survives clearing browsing data and app updates, so a tablet stays one row in the list. A factory reset gives it a new id, and it appears as a new device.
-- There is no serial number: Android only gives that to privileged apps. Record the serial or your own asset number in Hera's device list instead.
+- **Serial number (optional, off by default).** Admin menu → Kiosk page → "Send this tablet's serial number to Hera", then Save. Android only gives the serial to the tablet's device owner, so the switch only works on tablets set up with the QR code (full protection). When on, the app grants itself the one permission Android requires (`READ_PHONE_STATE`) and reads the serial; when off, the permission is taken back. To switch it on for a batch of tablets, add `"share_serial": "true"` to the admin extras in the set-up QR code. If a tablet still refuses, Hera simply shows no serial: type it into the device list by hand.
 - A tablet marked **Lost or stolen** in Hera is signed out the next time it checks in. Hera stores no records on the tablet.
 
 Tablets on an older kiosk app still appear in the list (as a browser device), without make, model or app version, until they update.

@@ -46,8 +46,10 @@ final class KioskBridge {
      * Android and app version, whether the kiosk lock is fully on, battery and storage.
      *
      * The id is Android's own per-app device id. It survives clearing browsing
-     * data and app updates, but not a factory reset. No serial number: Android
-     * only gives that to privileged apps. Read-only; nothing here changes the tablet.
+     * data and app updates, but not a factory reset. The hardware serial number is
+     * included only when "Send this tablet's serial number to Hera" is on in the
+     * admin menu and the tablet is device owner (KioskPolicy.serial()).
+     * Read-only; nothing here changes the tablet.
      */
     @SuppressLint("HardwareIds")
     @JavascriptInterface
@@ -66,6 +68,9 @@ final class KioskBridge {
             } catch (Exception ignored) {
             }
             o.put("deviceOwner", KioskPolicy.isDeviceOwner(activity));
+            // Only when the admin option is on and the tablet is device owner; otherwise absent.
+            String serial = KioskPolicy.serial(activity);
+            if (serial != null) o.put("serial", serial);
             BatteryManager bm = (BatteryManager) activity.getSystemService(Context.BATTERY_SERVICE);
             if (bm != null) {
                 int pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);

@@ -174,6 +174,13 @@ public class AdminActivity extends Activity {
         content.addView(screenOn);
         content.addView(uploads);
         content.addView(usb);
+        Switch serial = toggle("Send this tablet's serial number to Hera", prefs.shareSerial() && owner);
+        serial.setEnabled(owner);
+        content.addView(serial);
+        content.addView(hint(owner
+                ? "Off by default. When on, the serial number appears against this tablet in Hera's device list (System Administrator only). "
+                        + (prefs.shareSerial() ? (KioskPolicy.serial(this) != null ? "This tablet's serial can be read." : "This tablet is not giving its serial number; Hera will show none.") : "")
+                : "Needs full protection (QR set-up): Android only gives the serial number to the tablet's device owner."));
 
         content.addView(button("Save kiosk settings", false, v -> {
             String start = Prefs.normaliseUrl(url.getText().toString());
@@ -193,6 +200,7 @@ public class AdminActivity extends Activity {
             prefs.setKeepScreenOn(screenOn.isChecked());
             prefs.setAllowUploads(uploads.isChecked());
             prefs.setBlockUsbDebugging(usb.isChecked());
+            prefs.setShareSerial(owner && serial.isChecked());
             prefs.requestReload(false);
             KioskPolicy.applyAll(this);
             toast("Saved.");

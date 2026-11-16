@@ -86,12 +86,37 @@ final class KioskPolicy {
         // Hera's camera works without anyone having to answer Android's "Allow camera?" prompt.
         run("camera permission", () -> d.setPermissionGrantState(a, c.getPackageName(),
                 android.Manifest.permission.CAMERA, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED));
+        // The serial number for Hera's device list: granted only while the option is on, taken back when off.
+        run("serial permission", () -> d.setPermissionGrantState(a, c.getPackageName(),
+                android.Manifest.permission.READ_PHONE_STATE, p.shareSerial()
+                        ? DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
+                        : DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED));
         // Android system updates install overnight (02:00-05:00) rather than mid-shift.
         run("update window", () -> d.setSystemUpdatePolicy(a, SystemUpdatePolicy.createWindowedInstallPolicy(120, 300)));
         run("stay on while charging", () -> d.setGlobalSetting(a, Settings.Global.STAY_ON_WHILE_PLUGGED_IN,
                 p.keepScreenOn()
                         ? String.valueOf(BatteryManager.BATTERY_PLUGGED_AC | BatteryManager.BATTERY_PLUGGED_USB | BatteryManager.BATTERY_PLUGGED_WIRELESS)
                         : "0"));
+    }
+
+    /**
+     * The tablet's hardware serial number, or null.
+     *
+     * Android (10 and later) only gives the serial to a device owner that holds
+     * READ_PHONE_STATE, so this needs all three: full protection (QR set-up), the
+     * admin option switched on, and the permission applyAll() grants while it is on.
+     * Anything else returns null and Hera's device list simply has no serial.
+     */
+    @SuppressWarnings("HardwareIds")
+    static String serial(Context c) {
+        if (!isDeviceOwner(c) || !Prefs.get(c).shareSerial()) return null;
+        try {
+            String s = Build.getSerial();
+            return s == null || s.isEmpty() || Build.UNKNOWN.equalsIgnoreCase(s) ? null : s;
+        } catch (Throwable t) {
+            Log.w(TAG, "Serial number not available", t);
+            return null;
+        }
     }
 
     /** Back to "only the kiosk may run". */
@@ -156,6 +181,8 @@ final class KioskPolicy {
             run(r, () -> d.clearUserRestriction(ad, r));
         }
         run("usb debugging", () -> d.clearUserRestriction(ad, UserManager.DISALLOW_DEBUGGING_FEATURES));
+        run("serial permission", () -> d.setPermissionGrantState(ad, a.getPackageName(),
+                android.Manifest.permission.READ_PHONE_STATE, DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED));
         run("status bar", () -> d.setStatusBarDisabled(ad, false));
         run("keyguard", () -> d.setKeyguardDisabled(ad, false));
         run("screen capture", () -> d.setScreenCaptureDisabled(ad, false));
