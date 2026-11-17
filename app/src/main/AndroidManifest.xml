@@ -113,5 +113,10 @@
         <receiver
             android:name=".InstallResultReceiver"
             android:exported="false" />
+
+        <!-- Wakes the silent updater: 4-hourly checks, and installing once on charge for 10 minutes -->
+        <receiver
+            android:name=".UpdateAlarmReceiver"
+            android:exported="false" />
     </application>
 </manifest>

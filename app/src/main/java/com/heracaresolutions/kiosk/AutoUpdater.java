@@ -16,16 +16,19 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 /**
- * Automatic updates. On launch the kiosk reads version.json, which every build
- * publishes next to the APK:
+ * Automatic updates. The kiosk reads version.json, which every build publishes next to the APK:
  *
  *   {"versionCode": 12, "versionName": "1.0.12",
  *    "apkUrl": "https://…/v1.0.12/willowmere-kiosk.apk", "sha256": "…64 hex…"}
  *
- * If versionCode is newer than this app, the APK is downloaded, checked against
- * sha256, and installed silently (device owner only). Android also refuses any
- * APK not signed with the same key, so a tampered file can't be installed.
- * After install Android restarts the app and BootReceiver brings the kiosk back.
+ * Background checks (on launch, when Wi-Fi connects and every few hours, see UpdateScheduler) are
+ * silent: if versionCode is newer than this app, the APK is downloaded to private storage and
+ * checked against sha256, and nothing else happens. UpdateScheduler installs it once the tablet
+ * has been on charge for 10 minutes. "Check for updates now" in the admin menu installs at once.
+ *
+ * Installs are silent (device owner only). Android also refuses any APK not signed with the same
+ * key, so a tampered file can't be installed. After install Android restarts the app and
+ * BootReceiver brings the kiosk back.
  */
 final class AutoUpdater {
     private static final String TAG = "AutoUpdater";
@@ -44,14 +47,16 @@ final class AutoUpdater {
         /** Couldn't read version.json (server error, bad file). Tried again on the next launch. */
         CHECK_FAILED,
         UP_TO_DATE,
-        /** A newer version is downloading and installing; the app will restart. */
+        /** A newer version has been downloaded and checked; it installs once the tablet has been charging a while. */
+        DOWNLOADED,
+        /** A newer version is installing; the app will restart. */
         INSTALLING,
         /** Download, checksum or install failed. */
         INSTALL_FAILED
     }
 
     interface Listener {
-        /** Called on the main thread before the download starts. */
+        /** Called on the main thread before a manual check's download starts. */
         default void onInstallStarting(String versionName) {
         }
 
@@ -63,10 +68,11 @@ final class AutoUpdater {
     }
 
     /**
-     * Checks for and installs an update.
+     * Checks for an update and downloads it (manual: and installs it straight away).
      *
      * @param manual true from the admin menu's "Check for updates now": ignores the
-     *               on/off setting, the 10-minute limit and the failure back-off.
+     *               on/off setting, the 10-minute limit and the failure back-off, and
+     *               installs immediately instead of waiting for the charger.
      */
     static void check(Context context, boolean manual, Listener listener) {
         Context app = context.getApplicationContext();
@@ -119,25 +125,56 @@ final class AutoUpdater {
                 return;
             }
 
-            main.post(() -> listener.onInstallStarting(m.versionName));
-            UpdateInstaller.install(app, m.apkUrl, m.sha256, m.versionCode, new UpdateInstaller.Listener() {
-                @Override
-                public void onStatus(String message) {
-                    Log.i(TAG, message);
-                }
+            if (manual) main.post(() -> listener.onInstallStarting(m.versionName));
+            java.io.File apk;
+            try {
+                apk = UpdateInstaller.download(app, m.apkUrl, m.sha256, m.versionCode);
+            } catch (java.io.IOException e) {
+                boolean permanent = e instanceof UpdateInstaller.DownloadException
+                        && ((UpdateInstaller.DownloadException) e).permanent;
+                if (permanent) prefs.recordUpdateFailure(m.versionCode);
+                Log.w(TAG, "Update download failed", e);
+                main.post(() -> listener.onResult(Result.INSTALL_FAILED, "Update failed: " + e.getMessage()));
+                return;
+            }
+            prefs.setPendingUpdate(m.versionCode, m.versionName, m.sha256);
 
-                @Override
-                public void onCommitted() {
-                    main.post(() -> listener.onResult(Result.INSTALLING, "Installing version " + m.versionName));
-                }
-
-                @Override
-                public void onFailed(String message, boolean countAsFailure) {
-                    if (countAsFailure) prefs.recordUpdateFailure(m.versionCode);
-                    main.post(() -> listener.onResult(Result.INSTALL_FAILED, message));
-                }
-            });
+            if (!manual) {
+                main.post(() -> listener.onResult(Result.DOWNLOADED,
+                        "Version " + m.versionName + " downloaded; installs after 10 minutes on charge"));
+                return;
+            }
+            install(app, apk, m.versionCode, m.versionName, m.sha256, listener);
         }, "kiosk-update-check").start();
+    }
+
+    /** Installs a downloaded, checked APK now. Reports INSTALLING or INSTALL_FAILED on the main thread. */
+    static void install(Context context, java.io.File apk, int versionCode, String versionName, String sha256,
+                        Listener listener) {
+        Context app = context.getApplicationContext();
+        Handler main = new Handler(Looper.getMainLooper());
+        Prefs prefs = Prefs.get(app);
+        UpdateInstaller.installDownloaded(app, apk, sha256, versionCode, new UpdateInstaller.Listener() {
+            @Override
+            public void onStatus(String message) {
+                Log.i(TAG, message);
+            }
+
+            @Override
+            public void onCommitted() {
+                main.post(() -> listener.onResult(Result.INSTALLING, "Installing version " + versionName));
+            }
+
+            @Override
+            public void onFailed(String message, boolean countAsFailure) {
+                if (countAsFailure) {
+                    prefs.recordUpdateFailure(versionCode);
+                    prefs.clearPendingUpdate();
+                    UpdateInstaller.deleteDownloads(app, 0);
+                }
+                main.post(() -> listener.onResult(Result.INSTALL_FAILED, message));
+            }
+        });
     }
 
     /** version.json sits next to the APK: …/download/willowmere-kiosk.apk → …/download/version.json */

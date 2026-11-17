@@ -26,6 +26,13 @@ public class Context {
         return "com.heracaresolutions.kiosk";
     }
 
+    /** Overridable by tests (the update tests point it at a temp folder). */
+    public static volatile File FILES_DIR = new File(System.getProperty("java.io.tmpdir"), "kiosk-files");
+
+    public File getFilesDir() {
+        return FILES_DIR;
+    }
+
     public File getCacheDir() {
         return new File(System.getProperty("java.io.tmpdir"));
     }
