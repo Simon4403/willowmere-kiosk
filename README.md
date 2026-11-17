@@ -25,7 +25,7 @@ Android app that locks a tablet to the Willowmere website. Staff can only use Wi
 - 5 wrong PINs lock the prompt for 5 minutes. The menu closes itself after 3 minutes untouched.
 - Wi-Fi settings and all Android settings. These snap back to the kiosk after 5 minutes.
 - Change the start address and allowed sites, reload, clear browsing data, change the PIN.
-- Automatic app updates on launch, plus Check for updates now and install from a link (silent as device owner).
+- Silent automatic app updates: checked and downloaded in the background, installed once on charge for 10 minutes. Plus Check for updates now and install from a link (silent as device owner).
 - Exit kiosk for 30 minutes. It relocks automatically, on restart, or when you open the app.
 - Remove kiosk control, ready to repurpose or factory reset the tablet.
 
@@ -104,18 +104,21 @@ Installing the APK normally works too, as **basic protection** (Android screen p
 
 ## Updating the app
 
-Push changes to `main`; Actions publishes a new release. Tablets then update themselves:
+Push changes to `main`; Actions publishes a new release. Tablets then update themselves, silently:
 
-- **When:** every time the kiosk app starts, including after a tablet restart, it reads `version.json` from the latest release. If Wi-Fi isn't up yet, it checks as soon as Wi-Fi connects.
-- **Install:** if the version is newer, the tablet shows an "Updating Willowmere Kiosk" screen, downloads the APK, checks its SHA-256 against `version.json`, installs it silently, and reopens Willowmere. Android also refuses any APK not signed with your key.
+- **Check:** when the kiosk starts (including after a restart), when Wi-Fi connects after a missed check, and every 4 hours. It reads `version.json` from the latest release. Nothing appears on screen.
+- **Download:** if the version is newer, the APK downloads in the background to the app's private storage and is checked against the SHA-256 in `version.json`. A version that's already downloaded isn't fetched again.
+- **Install:** only once the tablet has been **on charge for 10 minutes without a break**, and nobody has touched the screen (or had the keyboard open) for 2 minutes, so no one loses what they were typing. Unplugging restarts the 10 minutes. Not during an admin maintenance window. The checksum is checked again as it installs, it installs silently, and Willowmere reopens by itself. If the screen is on, staff see a short "Updating" screen.
 - **Requirement:** full protection (QR set-up), because silent installs need device owner.
-- **Failures:** a version that fails to install is left alone for 6 hours. If the "Updating" screen hasn't finished after 3 minutes, the tablet goes back to Willowmere.
+- **Failures:** a version that fails to download (bad checksum) or install is dropped and left alone for 6 hours. If the "Updating" screen hasn't finished after 3 minutes, the tablet goes back to Willowmere.
 - **Admin menu → App updates:**
-  - **Install kiosk updates automatically**: on by default.
-  - **Check for updates now**: checks straight away, ignoring the 6-hour back-off.
+  - **Install kiosk updates automatically**: on by default. Shows when a downloaded version is waiting for the charger.
+  - **Check for updates now (installs straight away)**: doesn't wait for the charger, and ignores the 6-hour back-off.
   - **Install kiosk app update from a link**: manual install.
 
-The kiosk normally runs for days without restarting, so to roll an update out quickly, restart the tablets or use **Check for updates now**.
+In practice a new version goes on each tablet the next time it sits on charge, usually overnight.
+
+Tests for the charging rules and download checks: `bash test/updates/run.sh`.
 
 ## Retiring a tablet
 
@@ -145,6 +148,9 @@ app/src/main/java/com/heracaresolutions/kiosk/
   BootReceiver.java               relaunch after restart / update
   RelockReceiver.java             ends the 30-minute exit
   UpdateInstaller.java            download + install update
+  UpdateScheduler.java            when to check / install (charging wait)
+  ChargeWait.java                 the 10-minutes-on-charge rule (plain Java, tested)
+  UpdateAlarmReceiver.java        alarm that wakes the updater
   KioskBridge.java                window.HeraKiosk: printing, and deviceInfo() for Hera's device list
   PrinterService.java             find printers (mDNS / IP), send jobs, follow them, Android print screen fallback
   Ipp.java                        small IPP client (no Android classes)

@@ -12,6 +12,8 @@ public class BootReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action) && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             return;
         }
+        // The "on charge for 10 minutes" clock counts from boot, so it restarts after a restart.
+        if (Intent.ACTION_BOOT_COMPLETED.equals(action)) UpdateScheduler.onBoot(context);
         if (!KioskPolicy.isDeviceOwner(context)) return; // not a managed kiosk tablet
         Prefs.get(context).endMaintenance();
         KioskPolicy.applyAll(context);

@@ -41,6 +41,10 @@ final class Prefs {
     private static final String LAST_UPDATE_CHECK = "last_update_check";
     private static final String FAILED_UPDATE_VERSION = "failed_update_version";
     private static final String FAILED_UPDATE_AT = "failed_update_at";
+    private static final String PENDING_UPDATE_CODE = "pending_update_code";
+    private static final String PENDING_UPDATE_NAME = "pending_update_name";
+    private static final String PENDING_UPDATE_SHA = "pending_update_sha";
+    private static final String CHARGING_SINCE = "charging_since";
 
     static final int MIN_PIN_LENGTH = 6;
     static final int MAX_PIN_LENGTH = 12;
@@ -195,7 +199,39 @@ final class Prefs {
 
     // ------------------------------------------------------------- Updates
 
-    /** Check for and install kiosk app updates each time the app starts. On by default. */
+    /** An update that has been downloaded and checked, waiting to install once the tablet has been on charge. */
+    void setPendingUpdate(int versionCode, String versionName, String sha256) {
+        sp.edit().putInt(PENDING_UPDATE_CODE, versionCode)
+                .putString(PENDING_UPDATE_NAME, versionName)
+                .putString(PENDING_UPDATE_SHA, sha256).commit();
+    }
+
+    void clearPendingUpdate() {
+        sp.edit().remove(PENDING_UPDATE_CODE).remove(PENDING_UPDATE_NAME).remove(PENDING_UPDATE_SHA).commit();
+    }
+
+    int pendingUpdateCode() {
+        return sp.getInt(PENDING_UPDATE_CODE, 0);
+    }
+
+    String pendingUpdateName() {
+        return sp.getString(PENDING_UPDATE_NAME, String.valueOf(pendingUpdateCode()));
+    }
+
+    String pendingUpdateSha() {
+        return sp.getString(PENDING_UPDATE_SHA, null);
+    }
+
+    /** SystemClock.elapsedRealtime() when the charger went in, or 0 when not on charge. Cleared on restart. */
+    long chargingSince() {
+        return sp.getLong(CHARGING_SINCE, 0);
+    }
+
+    void setChargingSince(long elapsed) {
+        sp.edit().putLong(CHARGING_SINCE, elapsed).apply();
+    }
+
+    /** Check for and download kiosk app updates in the background. On by default. */
     boolean autoUpdate() {
         return sp.getBoolean(AUTO_UPDATE, true);
     }

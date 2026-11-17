@@ -249,9 +249,13 @@ public class AdminActivity extends Activity {
         autoUpdate.setOnCheckedChangeListener((b, on) -> prefs.setAutoUpdate(on));
         content.addView(autoUpdate);
         content.addView(hint(owner
-                ? "Checked each time the kiosk starts, including after a restart. New versions install silently and Willowmere reopens by itself."
+                ? "Checks quietly when the kiosk starts and every 4 hours, and downloads new versions in the background. "
+                + "A new version installs once the tablet has been on charge for 10 minutes and nobody has touched the "
+                + "screen for 2 minutes. Willowmere reopens by itself."
                 : "Automatic updates need full protection (QR set-up). Use the buttons below to update by hand."));
-        content.addView(button("Check for updates now", false, v -> checkUpdatesNow()));
+        String waiting = UpdateScheduler.pendingStatus(this);
+        if (waiting != null) content.addView(hint(waiting));
+        content.addView(button("Check for updates now (installs straight away)", false, v -> checkUpdatesNow()));
         content.addView(button("Install kiosk app update from a link", false, v -> promptUpdate()));
 
         // --- Leaving the kiosk

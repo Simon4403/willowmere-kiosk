@@ -30,6 +30,8 @@ public class InstallResultReceiver extends BroadcastReceiver {
             int versionCode = intent.getIntExtra(UpdateInstaller.EXTRA_VERSION_CODE, 0);
             // Don't keep retrying a version Android rejected (see AutoUpdater's back-off).
             if (versionCode > 0) Prefs.get(context).recordUpdateFailure(versionCode);
+            // Drop the downloaded copy; it is fetched again after the back-off.
+            UpdateScheduler.onInstallRejected(context);
             Toast.makeText(context, "Update failed: " + message, Toast.LENGTH_LONG).show();
             // Tell the kiosk so it removes the "Updating…" screen straight away.
             Intent back = new Intent(context, KioskActivity.class)

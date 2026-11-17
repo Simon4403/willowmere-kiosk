@@ -67,7 +67,7 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/willowmere-kiosk.apk
 
-      # Tablets read this on launch to find out whether a newer app exists (AutoUpdater.java).
+      # Tablets read this (on launch and every 4 hours) to find out whether a newer app exists (AutoUpdater.java).
       # apkUrl is pinned to this release's tag, so it always matches the checksum, even while
       # a newer release is still uploading.
       - name: Write update manifest (version.json)

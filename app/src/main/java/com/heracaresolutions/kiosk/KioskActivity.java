@@ -5,7 +5,10 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Rect;
@@ -53,7 +56,7 @@ import java.util.ArrayDeque;
  * The kiosk: a full-screen browser locked to the Willowmere site.
  * Admin menu: tap the top-left corner of the screen 7 times quickly, then enter the PIN.
  */
-public class KioskActivity extends Activity {
+public class KioskActivity extends Activity implements UpdateScheduler.Ui {
     private static final String TAG = "Kiosk";
 
     /** Sent by InstallResultReceiver when Android rejects an update, to remove the "Updating…" screen. */
@@ -63,9 +66,15 @@ public class KioskActivity extends Activity {
 
     private View updatePanel;
     private TextView updateDetail;
-    /** The launch check found no network; run it when Wi-Fi connects. */
-    private boolean updateCheckPending;
     private final Runnable updateTimeout = this::hideUpdating;
+    /** Charger plugged in / unplugged: starts or resets the 10-minute wait before a downloaded update installs. */
+    private final BroadcastReceiver powerReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            boolean in = Intent.ACTION_POWER_CONNECTED.equals(intent.getAction());
+            UpdateScheduler.onPowerChanged(KioskActivity.this, in);
+        }
+    };
 
     private static final int REQUEST_FILE = 41;
     private static final int REQUEST_CAMERA = 42;
@@ -132,7 +141,7 @@ public class KioskActivity extends Activity {
         registerNetworkCallback();
 
         web.loadUrl(prefs.startUrl());
-        checkForUpdate();
+        startUpdates();
     }
 
     @Override
@@ -143,32 +152,32 @@ public class KioskActivity extends Activity {
 
     // ------------------------------------------------------- Auto update
 
-    /** Runs on every launch (and after a restart). Installs a newer kiosk app if one has been published. */
-    private void checkForUpdate() {
-        // No PIN yet means first-run set-up is on screen; update next time rather than interrupt it.
-        if (!prefs.hasPin()) return;
-        updateCheckPending = false;
-        AutoUpdater.check(this, false, new AutoUpdater.Listener() {
-            @Override
-            public void onInstallStarting(String versionName) {
-                showUpdating("Installing version " + versionName + ".\nThis takes under a minute; the tablet restarts Willowmere by itself.");
-            }
+    /**
+     * Silent updates (see UpdateScheduler): checks now and every 4 hours, downloads anything new in the
+     * background, and installs it once the tablet has been on charge for 10 minutes.
+     */
+    private void startUpdates() {
+        UpdateScheduler.setUi(this);
+        IntentFilter power = new IntentFilter();
+        power.addAction(Intent.ACTION_POWER_CONNECTED);
+        power.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        // System broadcasts still arrive with NOT_EXPORTED; nothing else can poke this receiver.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(powerReceiver, power, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(powerReceiver, power);
+        }
+        UpdateScheduler.onLaunch(this);
+    }
 
-            @Override
-            public void onResult(AutoUpdater.Result result, String detail) {
-                Log.i(TAG, "Update check: " + result + " - " + detail);
-                switch (result) {
-                    case NO_NETWORK:
-                        updateCheckPending = true;
-                        break;
-                    case INSTALL_FAILED:
-                        hideUpdating();
-                        break;
-                    default:
-                        break; // INSTALLING: keep the screen up until Android restarts the app
-                }
-            }
-        });
+    @Override
+    public void onUpdateInstalling(String versionName) {
+        showUpdating("Installing version " + versionName + ".\nThis takes under a minute; the tablet restarts Willowmere by itself.");
+    }
+
+    @Override
+    public void onUpdateFailed() {
+        hideUpdating();
     }
 
     private void createUpdatePanel() {
@@ -258,6 +267,10 @@ public class KioskActivity extends Activity {
     @Override
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        try {
+            unregisterReceiver(powerReceiver);
+        } catch (Exception ignored) {
+        }
         if (networkCallback != null) {
             ConnectivityManager cm = getSystemService(ConnectivityManager.class);
             try {
@@ -290,6 +303,7 @@ public class KioskActivity extends Activity {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         lastInteraction = SystemClock.elapsedRealtime();
+        UpdateScheduler.noteTouch();
         if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
             int zone = dp(CORNER_SIZE_DP);
             if (ev.getRawX() <= zone && ev.getRawY() <= zone) {
@@ -419,6 +433,7 @@ public class KioskActivity extends Activity {
             root.setOnApplyWindowInsetsListener((v, insets) -> {
                 int bottom = insets.getInsets(WindowInsets.Type.ime()).bottom;
                 v.setPadding(0, 0, 0, bottom);
+                UpdateScheduler.setKeyboardOpen(bottom > 0);
                 return WindowInsets.CONSUMED;
             });
         } else {
@@ -432,6 +447,7 @@ public class KioskActivity extends Activity {
                 if (pad != keyboardPadding) {
                     keyboardPadding = pad;
                     root.setPadding(0, 0, 0, pad);
+                    UpdateScheduler.setKeyboardOpen(pad > 0);
                 }
             });
         }
@@ -752,7 +768,7 @@ public class KioskActivity extends Activity {
                 handler.post(() -> {
                     if (offlinePanel != null && offlinePanel.getVisibility() == View.VISIBLE) retryNow();
                     // The launch check ran before Wi-Fi was up (typical straight after a restart).
-                    if (updateCheckPending) checkForUpdate();
+                    UpdateScheduler.onNetworkAvailable(KioskActivity.this);
                 });
             }
         };
